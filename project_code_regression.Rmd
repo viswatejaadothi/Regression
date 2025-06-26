@@ -1,0 +1,317 @@
+---
+title: "Untitled"
+author: "Solomon Maccarthy"
+date: "2024-03-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("C:/Users/tejaa/Downloads/archive (1)")
+insurance <- read.csv("insurance.csv")
+summary(insurance)
+head(insurance)
+```
+#preprocessing
+```{r}
+insurance$smoker <- as.factor(insurance$smoker)
+insurance$region <- as.factor(insurance$region)
+insurance$sex <- as.factor(insurance$sex)
+
+```
+
+
+# Exploratory Data Analysis (EDA)
+```{r}
+#distribution of charges target variable
+hist(insurance$charges, main="Distribution of Charges", xlab="Charges")
+```
+```{r}
+boxplot(charges ~ smoker, data=insurance, main="Charges by Smoking Status")
+
+```
+
+```{r}
+barplot(table(insurance$smoker), main="Distribution of Smoker Status", xlab="Status", ylab="Count", col=c("green", "grey"))
+```
+
+```{r}
+barplot(table(insurance$children), main="Distribution of Number of Children", xlab="Number of Children", ylab="Count", col=rainbow(max(insurance$children) + 1))
+
+```
+
+
+
+# Research Questions and Hypotheses
+
+# RQ1: How do age, BMI, and smoking status influence insurance charges?
+# Hypothesis 1A: Age and BMI are positively correlated with insurance charges.
+# Hypothesis 1B: Smokers pay significantly higher insurance charges than non-smokers.
+
+# RQ2: Does the impact of BMI on insurance charges vary by smoking status?
+# Hypothesis 2: The relationship between BMI and insurance charges is stronger for smokers than for non-smokers.
+
+# RQ3: Are there regional variations in insurance charges, after controlling for age, BMI, and smoking status?
+# Hypothesis 3: There are no significant regional differences in insurance charges after controlling for key variables.
+
+#Variable Selection and Diagnostics
+```{r}
+# Load the required libraries
+library(MASS) # For stepAIC
+library(car) # For VIF
+library(ggplot2) # For data visualization
+
+# Assuming 'insurance' is your preloaded dataset
+
+# Check correlations among numeric predictors
+cor_matrix <- cor(insurance[, sapply(insurance, is.numeric)])
+print(cor_matrix)
+
+
+# Calculate VIF to assess multicollinearity
+model_vif <- lm(charges ~ ., data=insurance)
+vif_results <- vif(model_vif)
+print(vif_results)
+
+```
+
+#simple linear regression
+#Question 1: Is there a linear relationship between age and insurance charges?
+#Hypothesis: Older individuals might have higher insurance charges due to increased health risks.
+```{r}
+# Fit a simple linear regression model
+simple_model1 <- lm(charges ~ age, data = insurance)
+
+# Summary of the model
+summary(simple_model1)
+#shows a statistically significant relationship between age and insurance charges.
+```
+Question 2: Does BMI affect insurance charges?
+Hypothesis: Higher BMI might lead to higher insurance charges due to increased health risks.
+```{r}
+# Fit a simple linear regression model
+simple_model2 <- lm(charges ~ bmi, data = insurance)
+summary(simple_model2)
+#shows a statistically significant relationship between BMI and insurance charges.
+```
+Question 3: Are insurance charges different for smokers and non-smokers?
+Hypothesis: Smokers might have higher insurance charges compared to non-smokers due to higher health risks associated with smoking.
+```{r}
+# Fit a simple linear regression model
+simple_model3 <- lm(charges ~ smoker, data = insurance)
+summary(simple_model3)
+# shows a significant relationship between smoking status and insurance charges.
+```
+
+
+#multiplelinear regression
+```{r}
+# Creating an interaction term between sex and bmi
+# Fit the multiple linear regression model
+model2 <- lm(charges ~ sex + bmi + children + sex*bmi, data = insurance)
+
+# Summary of the model
+summary(model2)
+# the p-value is close to 0.05 
+# remove the interaction term from the model.
+```
+```{r}
+finalmodel <- lm(charges~.,data=insurance)
+summary(finalmodel)
+```
+
+#full model
+#residuals
+#model diagnostics to check assumptions and refine your model as needed.
+```{r}
+fit <- lm(charges ~ age + bmi + children + smoker + region + sex, data=insurance)
+
+# Diagnostics plots
+par(mfrow=c(2,2))
+plot(fit)  # This will produce 4 plots to help assess assumptions
+
+```
+
+#linearity
+```{r}
+# Scatter plot with residuals to check for linearity
+plot(fit$fitted.values, fit$residuals)
+abline(h=0, col="red")
+
+```
+
+#normality
+```{r}
+# Shapiro-Wilk test
+shapiro.test(fit$residuals)
+#With such a small p-value (p < 0.05), you would typically reject the null hypothesis. Therefore, the residuals are unlikely to be normally distributed.
+```
+#homoscadicity
+```{r}
+ncvTest(fit)
+#With such a small p-value (p < 0.05), you would typically reject the null hypothesis.
+#heteroscedasticity
+```
+
+#independence
+```{r}
+library(car)
+# Durbin-Watson test
+durbinWatsonTest(fit)
+#the p-value is 0.108, which is greater than 0.05, suggesting that there is no significant autocorrelation at the specified lag order.
+# not reject the null hypothesis of no autocorrelation.
+```
+# Addressing Model Assumption Violations
+#normality violation
+```{r}
+# Identify and remove outliers based on Cook's distance or standardized residuals
+cooks_d <- cooks.distance(fit)
+influential <- which(cooks_d > (4 / length(cooks_d)))
+insurance_clean <- insurance[-influential,]
+fit_clean <- lm(charges ~ age + bmi + children + smoker + region + sex, data=insurance_clean)
+# Shapiro-Wilk test on the residuals of the transformed
+shapiro.test(residuals(fit_clean))
+
+#need to do further transformations
+#Generalized Linear Models (GLMs)
+```
+#homoscadacity violation
+```{r}
+# Apply Box-Cox transformation to find an optimal lambda and transform the response variable
+library(MASS)
+bc <- boxcox(fit)
+lambda <- bc$x[which.max(bc$y)]
+insurance$transformed_charges <- (insurance$charges^lambda - 1) / lambda
+
+# Fit the model again with the transformed variable
+fit_transformed <- lm(transformed_charges ~ age + bmi + children + smoker + region + sex, data=insurance)
+# After fitting the transformed or WLS model
+ncvTest(fit_transformed)
+```
+
+#Exhaustive model
+```{r}
+intercept.model <- lm(charges ~ 1, data = insurance)
+full.model <- lm(charges ~ ., data = insurance)
+# Does not need to be all variables, can be a set under consideration.
+both <- step(intercept.model, direction="both", scope=formula(full.model), trace=0)
+# trace = 1 Shows each step
+both$anova #Shows the results
+both$coefficients #Shows the estimates
+
+
+# BIC #
+
+bothBIC <- step(intercept.model, direction="both", scope=formula(full.model), trace=0, k = log(nrow(insurance))) 
+# trace = 1 Shows each step
+bothBIC$anova #Shows the results
+
+bothBIC$coefficients #Shows the estimates
+```
+
+
+## performing GLM models as the assumptions are getting violated even after transformation of lm models.
+#using gamma 
+#The Gamma distribution is inherently right-skewed, making it ideal for data that are positively skewed. based on histogram
+
+#Data Transformation and Alternative Models
+```{r}
+insurance$log_charges <-  log(insurance$charges)
+# Fit a model with the transformed 'charges'
+model_log <- lm(log_charges ~ ., data=insurance)
+summary(model_log)
+
+library(MASS)
+
+# Fit a Gamma regression model
+GammaModel <- glm(log_charges ~ age + bmi + children + smoker + region + sex,
+                  family = inverse.gaussian(link = "identity"), data = insurance)
+
+# Summary of the model
+summary(GammaModel)
+```
+
+```{r}
+chooseCRANmirror(graphics = FALSE)
+install.packages("SuppDists")
+library(SuppDists)
+library(CRAN)
+install.packages("SuppDists", repos = "https://cloud.r-project.org")
+
+# Plotting standardized residuals
+# Plot deviance residuals against fitted values
+plot(GammaModel$fitted.values, residuals(GammaModel, type = "deviance"),
+     xlab = "Fitted values", ylab = "Deviance Residuals")
+abline(h = 0, col = "red")
+
+#overdispersion
+# Calculate the ratio of residual deviance to degrees of freedom
+overdispersion <- sum(residuals(GammaModel, type="deviance")^2) / GammaModel$df.residual
+print(overdispersion)
+# Values significantly greater than 1 might indicate overdispersion.
+
+
+## Adding model predictions and residuals to the dataset
+insurance$predicted <- predict(GammaModel, type = "response")
+insurance$residuals <- residuals(GammaModel, type = "response")
+
+# For each predictor, plot the residuals or fitted values to check for linearity
+plot(insurance$age, insurance$residuals,
+     xlab = "Age", ylab = "Residuals")
+# Repeat for other predictors as necessary.
+
+#q-q plot
+# Install and load the 'DHARMa' package for simulating residuals
+if (!require("DHARMa")) install.packages("DHARMa")
+library(DHARMa)
+
+# Simulate residuals and create a Q-Q plot
+simulated <- simulateResiduals(fittedModel = GammaModel)
+plotQQunif(simulated)
+
+```
+
+## comments:
+The overdispersion check you've performed for your Gamma regression model has resulted in a value of approximately 0.3601945. This value is significantly less than 1, indicating that overdispersion is not present in your model. In the context of a Gamma regression model, the concern is often more about underdispersion (where the variance is smaller than the mean) rather than overdispersion, which is more commonly a concern in Poisson regression models.
+
+Interpretation
+No Overdispersion: A value below 1 suggests that your model does not suffer from overdispersion, meaning that the Gamma model's variance parameter is adequately capturing the variability in your data.
+Model Adequacy: The lack of overdispersion is a good sign that the Gamma distribution is a suitable choice for modeling the response variable in your data. This is because the Gamma distribution naturally incorporates a variance function that is proportional to the square of the mean, allowing for flexible modeling of variance.
+
+
+
+
+### prediction 
+```{r}
+
+set.seed(2020)
+
+library(caret)
+
+
+train.control <- trainControl(method = "cv", number = 10)
+
+model1 <- train(charges ~ ., data = insurance, method = "lm",
+
+                trControl = train.control) 
+
+model2 <- train(charges ~ age + bmi + children + smoker + region + sex,
+                  family = inverse.gaussian(link = "identity"), data = insurance,
+                method = "glm",trControl = train.control) 
+
+print(model1)
+
+print(model2)
+
+```
+
+
+
+
+
+
